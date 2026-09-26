@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown → 维基文本转换器</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0e1015; --panel:#151922; --panel2:#1b202b; --border:#262c3a;
+    --text:#dfe4ee; --muted:#7d879c; --accent:#4f8cff; --green:#35d07f;
+  }
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text); font-size:14px; overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex; flex-direction:column;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+    flex:0 0 auto; flex-wrap:wrap;
+  }
+  h1{font-size:15px; font-weight:600; letter-spacing:.02em}
+  h1 em{color:var(--accent); font-style:normal}
+  h1 small{color:var(--muted); font-weight:400; font-size:12px; margin-left:8px}
+  .head-actions{display:flex; gap:8px}
+  .toolbar{
+    display:flex; flex-wrap:wrap; gap:16px; align-items:center;
+    padding:9px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+    flex:0 0 auto; font-size:13px;
+  }
+  .toolbar label{display:flex; align-items:center; gap:6px; color:var(--muted); cursor:pointer; user-select:none}
+  .toolbar label:hover{color:var(--text)}
+  input[type=checkbox]{accent-color:var(--accent); cursor:pointer; width:14px; height:14px}
+  input[type=text]{
+    background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    padding:4px 8px; border-radius:6px; font-size:13px; width:120px; outline:none; font-family:inherit;
+  }
+  input[type=text]:focus{border-color:var(--accent)}
+  main{flex:1 1 auto; display:flex; min-height:0; gap:1px; background:var(--border)}
+  .pane{flex:1 1 50%; display:flex; flex-direction:column; min-width:0; background:var(--bg)}
+  .pane-head{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:7px 14px; background:var(--panel); border-bottom:1px solid var(--border);
+    flex:0 0 auto; font-size:12px; color:var(--muted);
+  }
+  .pane-head .title{display:flex; align-items:center; gap:8px; font-weight:600; letter-spacing:.06em; text-transform:uppercase}
+  .dot{width:7px; height:7px; border-radius:50%; background:var(--accent)}
+  .pane-head .dot.g{background:var(--green)}
+  .stat{font-variant-numeric:tabular-nums; font-size:11px; opacity:.8}
+  textarea{
+    flex:1 1 auto; width:100%; resize:none; border:0; outline:none; tab-size:2;
+    background:var(--bg); color:var(--text); padding:14px 16px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    font-size:13px; line-height:1.7;
+  }
+  #out{background:#0b0d12; color:#a9d5ff}
+  button{
+    background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    padding:5px 11px; border-radius:6px; font-size:12px; cursor:pointer;
+    transition:.15s; font-family:inherit; white-space:nowrap;
+  }
+  button:hover{background:#232a38; border-color:#39435a}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.primary:hover{background:#3f7df0}
+  button.ok{background:var(--green); border-color:var(--green); color:#04220f}
+  @media (max-width:760px){
+    main{flex-direction:column}
+    .pane{flex:1 1 50%}
+    h1 small{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><em>Markdown</em> → 维基文本 <small>MediaWiki / Wikitext 转换器</small></h1>
+  <div class="head-actions">
+    <button id="btnClear">清空</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <label><input type="checkbox" id="optEmoji" checked> Emoji 短代码</label>
+  <label><input type="checkbox" id="optFootnote" checked> 脚注 → &lt;ref&gt;</label>
+  <label><input type="checkbox" id="optHighlight" checked> 代码块高亮</label>
+  <label><input type="checkbox" id="optTasks" checked> 任务列表 ☑/☐</label>
+  <label><input type="checkbox" id="optMath" checked> 数学公式 → &lt;math&gt;</label>
+  <label>表格 class <input type="text" id="optTableClass" value="wikitable"></label>
+</div>
+
+<main>
+  <section class="pane">
+    <div class="pane-head">
+      <span class="title"><span class="dot"></span>Markdown 输入</span>
+      <span class="stat" id="statIn">0 行 / 0 字符</span>
+    </div>
+    <textarea id="src" spellcheck="false" placeholder="在此粘贴 Markdown…"></textarea>
+  </section>
+  <section class="pane">
+    <div class="pane-head">
+      <span class="title"><span class="dot g"></span>维基文本输出</span>
+      <span style="display:flex;gap:8px;align-items:center">
+        <span class="stat" id="statOut">0 行 / 0 字符</span>
+        <button id="btnCopy" class="primary">复制</button>
+        <button id="btnDownload">下载 .wiki</button>
+      </span>
+    </div>
+    <textarea id="out" spellcheck="false" readonly></textarea>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+   *  Emoji 短代码表（常用子集，可自行扩充）
+   * ============================================================ */
+  const EMOJI = {
+    smile:'😄', smiley:'😃', grin:'😁', laughing:'😆', joy:'😂', rofl:'🤣',
+    wink:'😉', blush:'😊', heart_eyes:'😍', kissing_heart:'😘', yum:'😋',
+    sunglasses:'😎', thinking:'🤔', neutral_face:'😐', expressionless:'😑',
+    unamused:'😒', sweat:'😓', pensive:'😔', confused:'😕', upside_down_face:'🙃',
+    fearful:'😨', cold_sweat:'😰', disappointed:'😞', cry:'😢', sob:'😭',
+    scream:'😱', angry:'😠', rage:'😡', triumph:'😤', sleeping:'😴', zzz:'💤',
+    poop:'💩', ghost:'👻', skull:'💀', alien:'👽', robot:'🤖', clown_face:'🤡',
+    thumbsup:'👍', '+1':'👍', thumbsdown:'👎', '-1':'👎', ok_hand:'👌',
+    punch:'👊', fist:'✊', v:'✌️', wave:'👋', raised_hand:'✋', clap:'👏',
+    pray:'🙏', muscle:'💪', point_right:'👉', point_left:'👈', point_up:'☝️',
+    point_down:'👇', heart:'❤️', broken_heart:'💔', two_hearts:'💕',
+    sparkling_heart:'💖', star:'⭐', sparkles:'✨', fire:'🔥', boom:'💥',
+    zap:'⚡', sun:'☀️', rainbow:'🌈', cloud:'☁️', snowflake:'❄️', droplet:'💧',
+    ocean:'🌊', check:'✅', white_check_mark:'✅', x:'❌',
+    heavy_check_mark:'✔️', heavy_multiplication_x:'✖️', warning:'⚠️',
+    no_entry:'⛔', question:'❓', exclamation:'❗', heavy_exclamation_mark:'❗',
+    bulb:'💡', bell:'🔔', rocket:'🚀', tada:'🎉', gift:'🎁', trophy:'🏆',
+    medal:'🏅', crown:'👑', gem:'💎', moneybag:'💰', coffee:'☕', beer:'🍺',
+    pizza:'🍕', cake:'🎂', apple:'🍎', hamburger:'🍔', dog:'🐶', cat:'🐱',
+    mouse:'🐭', panda:'🐼', bug:'🐛', bee:'🐝', computer:'💻', phone:'📱',
+    email:'📧', memo:'📝', book:'📖', books:'📚', clipboard:'📋',
+    calendar:'📅', clock:'🕐', hourglass:'⏳', lock:'🔒', unlock:'🔓',
+    key:'🔑', wrench:'🔧', hammer:'🔨', gear:'⚙️', link:'🔗',
+    paperclip:'📎', scissors:'✂️', mag:'🔍', chart:'📊',
+    chart_with_upwards_trend:'📈', chart_with_downwards_trend:'📉',
+    package:'📦', inbox_tray:'📥', outbox_tray:'📤', arrow_right:'➡️',
+    arrow_left:'⬅️', arrow_up:'⬆️', arrow_down:'⬇️',
+    arrows_counterclockwise:'🔄', info:'ℹ️', octocat:'🐙',
+    cn:'🇨🇳', us:'🇺🇸', jp:'🇯🇵', kr:'🇰🇷', gb:'🇬🇧', fr:'🇫🇷',
+    de:'🇩🇪', es:'🇪🇸', ru:'🇷🇺'
+  };
+
+  /* ============================================================
+   *  小工具
+   * ============================================================ */
+  const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  function getAttr(attrs, name) {
+    const re = new RegExp(
+      name + "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", 'i'
+    );
+    const m = attrs.match(re);
+    if (!m) return null;
+    return m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]);
+  }
+
+  function safeName(id) {
+    return String(id).replace(/["'<>&\s]/g, '_');
+  }
+
+  /* 保护行内代码，返回带占位符的文本 */
+  function protectInlineCode(text, store) {
+    let out = '', i = 0;
+    while (i < text.length) {
+      if (text[i] === '`') {
+        let len = 0;
+        while (text[i + len] === '`') len++;
+        const fence = '`'.repeat(len);
+        const end = text.indexOf(fence, i + len);
+        if (end !== -1) {
+          store.push(text.slice(i + len, end));
+          out += '\u0000' + (store.length - 1) + '\u0000';
+          i = end + len;
+          continue;
+        }
+      }
+      out += text[i++];
+    }
+    return out;
+  }
+
+  /* ============================================================
+   *  HTML 标签处理（「语法变通」章节）
+   * ============================================================ */
+  function convertHtmlTags(text) {
+    // <img src="..." width="..." alt="...">  →  [[File:...|100px|alt]]
+    text = text.replace(/<img\b([^>]*?)\/?>/gi, (m, attrs) => {
+      const src = getAttr(attrs, 'src');
+      if (!src) return m;
+      if (/^[a-z][\w+.-]*:\/\//i.test(src)) return m;   // 外链图片原样保留
+      const width = getAttr(attrs, 'width');
+      const alt = getAttr(attrs, 'alt');
+      const parts = [];
+      if (width) parts.push(/^\d+$/.test(width) ? width + 'px' : width);
+      if (alt) parts.push(alt);
+      return '[[File:' + src + (parts.length ? '|' + parts.join('|') : '') + ']]';
+    });
+
+    // <a href="..." target="_blank">text</a>  →  [url text]
+    text = text.replace(/<a\b([^>]*?)>([\s\S]*?)<\/a>/gi, (m, attrs, label) => {
+      const href = getAttr(attrs, 'href');
+      if (!href) return m;
+      if (href.charAt(0) === '#') return label;
+      return '[' + href + ' ' + label + ']';
+    });
+
+    // <font color="red">  →  <span style="color:red">
+    text = text.replace(/<font\b([^>]*?)>/gi, (m, attrs) => {
+      const color = getAttr(attrs, 'color');
+      return color ? '<span style="color:' + color + '">' : '<span>';
+    });
+    text = text.replace(/<\/font>/gi, '</span>');
+
+    // <p style="...">  →  <div style="...">
+    text = text.replace(/<p\b([^>]*?)>/gi, (m, attrs) => {
+      const style = getAttr(attrs, 'style');
+      const align = getAttr(attrs, 'align');
+      if (style) return '<div style="' + style + '">';
+      if (align) return '<div style="text-align:' + align + '">';
+      return m;
+    });
+    text = text.replace(/<\/p>/gi, '</div>');
+
+    // <ins> / <u> / <del> / <mark> / <kbd> 维基原生支持，原样保留
+    return text;
+  }
+
+  /* ============================================================
+   *  行内转换
+   * ============================================================ */
+  function inline(text, st, depth) {
+    if (text === null || text === undefined) return '';
+    depth = depth || 0;
+    if (!text) return '';
+
+    // 1) 保护行内代码
+    const codes = [];
+    text = protectInlineCode(text, codes);
+
+    // 2) HTML 标签变通
+    text = convertHtmlTags(text);
+
+    // 3) 图片 ![alt](url)
+    text = text.replace(
+      /!\[([^\]]*)\]\(\s*<?([^)\s<>]+)>?(?:\s+["']([^"']*)["'])?\s*\)/g,
+      (m, alt, url) => {
+        if (/^[a-z][\w+.-]*:\/\//i.test(url)) return alt ? '[' + url + ' ' + alt + ']' : url;
+        return alt ? '[[File:' + url + '|' + alt + ']]' : '[[File:' + url + ']]';
+      }
+    );
+
+    // 4) 链接 [text](url)
+    text = text.replace(
+      /\[([^\]]*)\]\(\s*<?([^)\s<>]+)>?(?:\s+["']([^"']*)["'])?\s*\)/g,
+      (m, label, url) => {
+        if (label) {
+          const inner = depth < 4 ? inline(label, st, depth + 1) : label;
+          return '[' + url + ' ' + inner + ']';
+        }
+        return '[' + url + ']';
+      }
+    );
+
+    // 5) 脚注引用 [^id]
+    if (st.opts.footnote) {
+      text = text.replace(/\[\^([^\]]+)\]/g, (m, id) => {
+        if (!st.footnotes.has(id)) return m;
+        const name = safeName(id);
+        if (st.usedFootnotes.has(id)) return '<ref name="' + name + '"/>';
+        st.usedFootnotes.add(id);
+        const body = depth < 4 ? inline(st.footnotes.get(id), st, depth + 1) : st.footnotes.get(id);
+        return '<ref name="' + name + '">' + body + '</ref>';
+      });
+    }
+
+    // 6) 自动链接 <https://...>
+    text = text.replace(/<((?:https?|ftp):\/\/[^>\s]+)>/g, '$1');
+
+    // 7) 行内数学 $...$
+    if (st.opts.math) {
+      text = text.replace(/\$([^$\n]+?)\$/g, (m, c) => '<math>' + c + '</math>');
+    }
+
+    // 8) Emoji 短代码 :smile:
+    if (st.opts.emoji) {
+      text = text.replace(
+        /(^|[^\w:\/]):([a-z0-9_+\-]+):(?![\w\/])/gi,
+        (m, pre, name) => {
+          const e = EMOJI[name.toLowerCase()];
+          return e ? pre + e : m;
+        }
+      );
+    }
+
+    // 9) 高亮 ==text==
+    text = text.replace(/==([^=\n]+?)==/g, (m, c) => '<mark>' + c + '</mark>');
+
+    // 10) 删除线 ~~text~~
+    text = text.replace(/~~([^~\n]+?)~~/g, (m, c) => '<s>' + c + '</s>');
+
+    // 11) 下标 ~x~ / 上标 ^x^
+    text = text.replace(/~([^~\n]+?)~/g, (m, c) => '<sub>' + c + '</sub>');
+    text = text.replace(/\^([^^\n]+?)\^/g, (m, c) => '<sup>' + c + '</sup>');
+
+    // 12) 强调
+    text = text.replace(/\*\*\*([^*\n]+?)\*\*\*/g, "'''''$1'''''");
+    text = text.replace(/\*\*([^*\n]+?)\*\*/g, "'''$1'''");
+    text = text.replace(/(?<![A-Za-z0-9_])__([^_\n]+?)__(?![A-Za-z0-9_])/g, "'''$1'''");
+    text = text.replace(/(?<![*\w])\*([^\s*][^*\n]*?)\*(?!\*)/g, "''$1''");
+    text = text.replace(/(?<![A-Za-z0-9_])_([^\s_][^_\n]*?)_(?![A-Za-z0-9_])/g, "''$1''");
+
+    // 13) 反斜杠转义
+    text = text.replace(/\\([*_`\[\]()<>~|#+\-.!^=$])/g, '$1');
+
+    // 14) 还原行内代码
+    text = text.replace(/\u0000(\d+)\u0000/g, (m, idx) => {
+      return '<code>' + escHtml(codes[+idx]) + '</code>';
+    });
+
+    return text;
+  }
+
+  /* ============================================================
+   *  表格辅助
+   * ============================================================ */
+  function splitRow(row) {
+    row = row.trim();
+    if (row.charAt(0) === '|') row = row.slice(1);
+    if (row.slice(-1) === '|' && row.slice(-2) !== '\\|') row = row.slice(0, -1);
+    return row.split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
+  }
+
+  function isTableStart(lines, i) {
+    if (i + 1 >= lines.length) return false;
+    const head = lines[i].trim(), sep = lines[i + 1].trim();
+    if (head.charAt(0) !== '|' || head.indexOf('|') < 0) return false;
+    if (!/^[\s:|-]+$/.test(sep) || sep.indexOf('-') < 0) return false;
+    return true;
+  }
+
+  function cellLine(text, align, isHeader, st) {
+    const p = isHeader ? '!' : '|';
+    const body = inline(text, st);
+    return align ? p + ' style="text-align:' + align + ';" | ' + body
+                 : p + ' ' + body;
+  }
+
+  /* ============================================================
+   *  块级转换
+   * ============================================================ */
+  function convertBlocks(lines, st) {
+    const out = [];
+    const n = lines.length;
+    let i = 0;
+
+    while (i < n) {
+      const line = lines[i];
+
+      /* ---- 空行 ---- */
+      if (!line.trim()) {
+        if (out.length && out[out.length - 1] !== '') out.push('');
+        i++;
+        continue;
+      }
+
+      /* ---- 围栏代码块 ---- */
+      let m = line.match(/^(\s*)(`{3,}|~{3,})\s*(.*?)\s*$/);
+      if (m) {
+        const fence = m[2];
+        const ch = fence.charAt(0);
+        const len = fence.length;
+        const lang = (m[3] || '').split(/\s+/)[0];
+        const closeRe = new RegExp('^\\s*' + (ch === '`' ? '`' : '~') +
+                                   '{' + len + ',}\\s*$');
+        const buf = [];
+        i++;
+        while (i < n && !closeRe.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++;
+        if (st.opts.highlight) {
+          out.push(lang ? '<syntaxhighlight lang="' + lang + '">' : '<syntaxhighlight>');
+          out.push.apply(out, buf);
+          out.push('</syntaxhighlight>');
+        } else {
+          out.push('<pre>');
+          out.push.apply(out, buf.map(escHtml));
+          out.push('</pre>');
+        }
+        continue;
+      }
+
+      /* ---- 数学公式块 $$...$$ ---- */
+      if (st.opts.math) {
+        m = line.match(/^\s*\$\$(.+?)\$\$\s*$/);
+        if (m) {
+          out.push('<math display="block">' + m[1].trim() + '</math>');
+          i++;
+          continue;
+        }
+        if (/^\s*\$\$\s*$/.test(line)) {
+          const buf = [];
+          i++;
+          while (i < n && !/^\s*\$\$\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+          i++;
+          out.push('<math display="block">' + buf.join('\n') + '</math>');
+          continue;
+        }
+      }
+
+      /* ---- ATX 标题 # H ---- */
+      m = line.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+      if (m) {
+        const lvl = m[1].length;
+        let title = m[2];
+        let anchor = '';
+        const am = title.match(/\s*\{#([^}]+)\}\s*$/);
+        if (am) { anchor = am[1]; title = title.slice(0, am.index); }
+        const eq = '='.repeat(lvl);
+        let head = eq + ' ' + inline(title, st) + ' ' + eq;
+        if (anchor) head = '<span id="' + anchor + '"></span>\n' + head;
+        out.push(head);
+        i++;
+        continue;
+      }
+
+      /* ---- Setext 标题（下一行是 === 或 ---） ---- */
+      if (line.trim() && i + 1 < n && !/^\s*([-*+]|\d+[.)])\s/.test(line)) {
+        const sm = lines[i + 1].match(/^\s{0,3}(=+|-{2,})\s*$/);
+        if (sm) {
+          const lvl = sm[1].charAt(0) === '=' ? 1 : 2;
+          const eq = '='.repeat(lvl);
+          out.push(eq + ' ' + inline(line.trim(), st) + ' ' + eq);
+          i += 2;
+          continue;
+        }
+      }
+
+      /* ---- 水平线 ---- */
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+        out.push('----');
+        i++;
+        continue;
+      }
+
+      /* ---- 表格 ---- */
+      if (isTableStart(lines, i)) {
+        const header = splitRow(lines[i]);
+        const seps = splitRow(lines[i + 1]);
+        const aligns = seps.map(s => {
+          const l = s.charAt(0) === ':', r = s.slice(-1) === ':';
+          if (l && r) return 'center';
+          if (r) return 'right';
+          if (l) return 'left';
+          return null;
+        });
+
+        let j = i + 2;
+        const rows = [];
+        while (j < n && lines[j].trim().charAt(0) === '|') {
+          rows.push(splitRow(lines[j]));
+          j++;
+        }
+
+        out.push('{| class="' + st.opts.tableClass + '"');
+        out.push('|-');
+        header.forEach((c, k) => out.push(cellLine(c, aligns[k], true, st)));
+        rows.forEach(r => {
+          out.push('|-');
+          r.forEach((c, k) => out.push(cellLine(c, aligns[k], false, st)));
+        });
+        out.push('|}');
+        i = j;
+        continue;
+      }
+
+      /* ---- 引用块 ---- */
+      if (/^\s*>/.test(line)) {
+        const buf = [];
+        while (i < n && /^\s*>/.test(lines[i])) {
+          buf.push(lines[i].replace(/^\s*>\s?/, ''));
+          i++;
+        }
+        out.push('<blockquote>');
+        out.push(convertBlocks(buf, st));
+        out.push('</blockquote>');
+        continue;
+      }
+
+      /* ---- 定义列表 : 定义 ---- */
+      if (/^:\s+/.test(line)) {
+        out.push(': ' + inline(line.replace(/^:\s+/, ''), st));
+        i++;
+        continue;
+      }
+      if (i + 1 < n && line.trim() && /^:\s+/.test(lines[i + 1])) {
+        out.push('; ' + inline(line.trim(), st));
+        i++;
+        continue;
+      }
+
+      /* ---- 列表 ---- */
+      m = line.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+      if (m) {
+        const stack = [];
+        while (i < n) {
+          const lm = lines[i].match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
+          if (!lm) break;
+          const indent = lm[1].replace(/\t/g, '    ').length;
+          const ch = /^\d/.test(lm[2]) ? '#' : '*';
+          let content = lm[3];
+
+          while (stack.length && stack[stack.length - 1][0] >= indent) stack.pop();
+          stack.push([indent, ch]);
+          const prefix = stack.map(s => s[1]).join('');
+
+          const tm = content.match(/^\[([ xX])\]\s+(.*)$/);
+          if (tm && st.opts.tasks) {
+            content = (tm[1].toLowerCase() === 'x' ? '☑ ' : '☐ ') + tm[2];
+          }
+          out.push(prefix + ' ' + inline(content, st));
+          i++;
+        }
+        continue;
+      }
+
+      /* ---- 普通段落行 ---- */
+      out.push(inline(line, st));
+      i++;
+    }
+
+    return out.join('\n');
+  }
+
+  /* ============================================================
+   *  主转换入口
+   * ============================================================ */
+  function convert(md, opts) {
+    const st = {
+      opts: opts,
+      footnotes: new Map(),   // id -> 内容
+      usedFootnotes: new Set()
+    };
+
+    let lines = md.replace(/\r\n?/g, '\n').split('\n');
+
+    /* ---- 提取脚注定义 [^id]: 内容 ---- */
+    if (opts.footnote) {
+      const kept = [];
+      for (let i = 0; i < lines.length; i++) {
+        const fm = lines[i].match(/^\[\^([^\]]+)\]:\s*(.*)$/);
+        if (fm) {
+          let content = fm[2];
+          // 支持缩进续行
+          while (i + 1 < lines.length && /^(?: {4,}|\t)\S/.test(lines[i + 1])) {
+            i++;
+            content += '\n' + lines[i].replace(/^(?: {4}|\t)/, '');
+          }
+          st.footnotes.set(fm[1], content);
+          kept.push('');   // 定义行从正文移除
+        } else {
+          kept.push(lines[i]);
+        }
+      }
+      lines = kept;
+    }
+
+    /* ---- 预处理：注释 / 目录 ---- */
+    lines = lines.map(l => {
+      let m2 = l.match(/^\s*\[\/\/\]:\s*#\s*\((.*?)\)\s*$/);
+      if (m2) return '<!-- ' + m2[1] + ' -->';
+      m2 = l.match(/^\s*\[\/\/\]:\s*<>\s*\((.*?)\)\s*$/);
+      if (m2) return '<!-- ' + m2[1] + ' -->';
+      m2 = l.match(/^\s*\[[^\]^][^\]]*\]:\s*#\s+(.*)$/);
+      if (m2) return '<!-- ' + m2[1] + ' -->';
+      if (/^\s*\[(?:TOC|toc)\]\s*$/.test(l)) return '__TOC__';
+      return l;
+    });
+
+    let result = convertBlocks(lines, st);
+
+    /* ---- 自动追加 <references/> ---- */
+    if (st.usedFootnotes.size > 0) {
+      result = result.replace(/\s+$/, '') + '\n\n<references/>';
+    }
+
+    return result;
+  }
+
+  /* ============================================================
+   *  界面逻辑
+   * ============================================================ */
+  const $ = id => document.getElementById(id);
+  const src = $('src'), out = $('out');
+
+  function currentOpts() {
+    return {
+      emoji: $('optEmoji').checked,
+      footnote: $('optFootnote').checked,
+      highlight: $('optHighlight').checked,
+      tasks: $('optTasks').checked,
+      math: $('optMath').checked,
+      tableClass: $('optTableClass').value.trim() || 'wikitable'
+    };
+  }
+
+  function update() {
+    const text = src.value;
+    let wiki = '';
+    try {
+      wiki = convert(text, currentOpts());
+    } catch (e) {
+      wiki = '/* 转换出错：' + e.message + ' */';
+      console.error(e);
+    }
+    out.value = wiki;
+
+    const inLines = text ? text.split('\n').length : 0;
+    const outLines = wiki ? wiki.split('\n').length : 0;
+    $('statIn').textContent = inLines + ' 行 / ' + text.length + ' 字符';
+    $('statOut').textContent = outLines + ' 行 / ' + wiki.length + ' 字符';
+  }
+
+  let timer = null;
+  src.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(update, 60);
+  });
+
+  document.querySelectorAll('.toolbar input').forEach(el => {
+    el.addEventListener('change', update);
+    el.addEventListener('input', update);
+  });
+
+  /* 复制 */
+  $('btnCopy').addEventListener('click', async () => {
+    const btn = $('btnCopy');
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(out.value);
+      } else {
+        out.removeAttribute('readonly');
+        out.select();
+        document.execCommand('copy');
+        out.setAttribute('readonly', '');
+        window.getSelection().removeAllRanges();
+      }
+      btn.textContent = '已复制 ✓';
+      btn.classList.add('ok');
+      setTimeout(() => {
+        btn.textContent = '复制';
+        btn.classList.remove('ok');
+      }, 1400);
+    } catch (e) {
+      btn.textContent = '复制失败';
+      setTimeout(() => (btn.textContent = '复制'), 1400);
+    }
+  });
+
+  /* 下载 */
+  $('btnDownload').addEventListener('click', () => {
+    const blob = new Blob([out.value], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'output.wiki';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  /* 清空 */
+  $('btnClear').addEventListener('click', () => {
+    src.value = '';
+    out.value = '';
+    update();
+    src.focus();
+  });
+
+  /* Tab 键插入两个空格 */
+  src.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = src.selectionStart, en = src.selectionEnd;
+      src.value = src.value.slice(0, s) + '  ' + src.value.slice(en);
+      src.selectionStart = src.selectionEnd = s + 2;
+      update();
+    }
+  });
+
+  /* 初始化 */
+  update();
+})();
+</script>
+</body>
+</html>
